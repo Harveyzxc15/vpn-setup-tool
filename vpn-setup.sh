@@ -43,7 +43,7 @@ host = 202.133.226.82
 port = 10443
 username = $username
 password = $password
-trusted-cert = 178e958a49dd776356f3b39389eb7c5dd7d1ab18c8e7a9acaf796477c9ef7153
+trusted-cert = 01a59b4e111a1083fdc0cd7e98041c104168e7819264f26c23d51fe949365b9c
 CONF
 chmod 600 ~/.config/openfortivpn/config
 
