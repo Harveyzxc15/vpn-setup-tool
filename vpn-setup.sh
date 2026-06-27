@@ -36,6 +36,13 @@ echo -n "請輸入 VPN 密碼: "
 read -s password
 echo ""
 
+# 取得最新憑證
+CERT_URL="https://raw.githubusercontent.com/Harveyzxc15/vpn-setup-tool/main/trusted-cert.txt"
+LATEST_CERT=$(curl -sf "$CERT_URL")
+if [ -z "$LATEST_CERT" ]; then
+    LATEST_CERT="8f7862731eaa40a11098763f9f32f7706a411f7c1db241b7782bbac801b3aeb7"
+fi
+
 # 建立 VPN 設定檔
 mkdir -p ~/.config/openfortivpn
 cat > ~/.config/openfortivpn/config << CONF
@@ -43,13 +50,27 @@ host = 202.133.226.82
 port = 10443
 username = $username
 password = $password
-trusted-cert = 8f7862731eaa40a11098763f9f32f7706a411f7c1db241b7782bbac801b3aeb7
+trusted-cert = $LATEST_CERT
 CONF
 chmod 600 ~/.config/openfortivpn/config
 
+# 建立自動更新憑證的連線腳本
+cat > ~/vpn-connect.sh << 'SCRIPT'
+#!/bin/zsh
+CERT_URL="https://raw.githubusercontent.com/Harveyzxc15/vpn-setup-tool/main/trusted-cert.txt"
+LATEST_CERT=$(curl -sf "$CERT_URL")
+if [ -n "$LATEST_CERT" ]; then
+    sed -i '' "s/^trusted-cert = .*/trusted-cert = $LATEST_CERT/" ~/.config/openfortivpn/config
+fi
+sudo openfortivpn -c ~/.config/openfortivpn/config
+SCRIPT
+chmod +x ~/vpn-connect.sh
+
 # 設定 alias
-if ! grep -q "alias vpn=" ~/.zshrc; then
-    echo 'alias vpn="sudo openfortivpn -c ~/.config/openfortivpn/config"' >> ~/.zshrc
+if grep -q "alias vpn=" ~/.zshrc; then
+    sed -i '' 's|alias vpn=.*|alias vpn="zsh ~/vpn-connect.sh"|' ~/.zshrc
+else
+    echo 'alias vpn="zsh ~/vpn-connect.sh"' >> ~/.zshrc
 fi
 
 # 設定免密碼 sudo
@@ -71,12 +92,11 @@ else
     echo "VPN ○ | color=#cc0000"
     echo "---"
     echo "狀態：未連線"
-    echo "連線 | bash=/usr/bin/sudo param1=/opt/homebrew/bin/openfortivpn param2=-c param3=$HOME/.config/openfortivpn/config terminal=false refresh=true"
+    echo "連線 | bash=/bin/zsh param1=$HOME/vpn-connect.sh terminal=false refresh=true"
 fi
 PLUGIN
 chmod +x ~/Library/Application\ Support/SwiftBar/Plugins/vpn.10s.sh
 
-# 設定 SwiftBar plugin 路徑並啟動
 defaults write com.ameba.SwiftBar PluginDirectory "$HOME/Library/Application Support/SwiftBar/Plugins"
 open /Applications/SwiftBar.app
 
@@ -84,3 +104,4 @@ echo ""
 echo "=== 設定完成！==="
 echo "  - Terminal 輸入 'vpn' 可連線（需重開 Terminal）"
 echo "  - 狀態列可直接點選連線/斷線"
+echo "  - 憑證會自動從網路同步，以後不需手動更新"
