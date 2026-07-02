@@ -28,43 +28,74 @@ else
     echo "[3/4] SwiftBar 已安裝，略過"
 fi
 
-# 輸入帳號密碼
-echo ""
-echo -n "請輸入 VPN 帳號: "
-read username
-echo -n "請輸入 VPN 密碼: "
-read -s password
-echo ""
+# 輸入帳號密碼（已有設定檔則可跳過）
+if [ -f ~/.config/openfortivpn/config ]; then
+    echo ""
+    echo "偵測到既有設定檔，保留帳號密碼（如需更改密碼，安裝後用 vpn-passwd）"
+else
+    echo ""
+    echo -n "請輸入 VPN 帳號: "
+    read username
+    echo -n "請輸入 VPN 密碼: "
+    read -s password
+    echo ""
 
-# 取得最新憑證
-CERT_URL="https://raw.githubusercontent.com/Harveyzxc15/vpn-setup-tool/main/trusted-cert.txt"
-LATEST_CERT=$(curl -sf "$CERT_URL")
-if [ -z "$LATEST_CERT" ]; then
-    LATEST_CERT="8f7862731eaa40a11098763f9f32f7706a411f7c1db241b7782bbac801b3aeb7"
-fi
+    CERT_URL="https://raw.githubusercontent.com/Harveyzxc15/vpn-setup-tool/main/trusted-cert.txt"
+    LATEST_CERT=$(curl -sf "$CERT_URL")
+    [ -z "$LATEST_CERT" ] && LATEST_CERT="8f7862731eaa40a11098763f9f32f7706a411f7c1db241b7782bbac801b3aeb7"
 
-# 建立 VPN 設定檔
-mkdir -p ~/.config/openfortivpn
-cat > ~/.config/openfortivpn/config << CONF
+    mkdir -p ~/.config/openfortivpn
+    cat > ~/.config/openfortivpn/config << CONF
 host = 202.133.226.82
 port = 10443
 username = $username
 password = $password
 trusted-cert = $LATEST_CERT
 CONF
-chmod 600 ~/.config/openfortivpn/config
+    chmod 600 ~/.config/openfortivpn/config
+fi
 
-# 建立自動更新憑證的連線腳本
+# 連線腳本：自動同步憑證 + 斷線通知 + 自動重連
 cat > ~/vpn-connect.sh << 'SCRIPT'
 #!/bin/zsh
 CERT_URL="https://raw.githubusercontent.com/Harveyzxc15/vpn-setup-tool/main/trusted-cert.txt"
-LATEST_CERT=$(curl -sf "$CERT_URL")
+STOP_FLAG="/tmp/vpn-stop-$(whoami)"
+LATEST_CERT=$(curl -sf --max-time 3 "$CERT_URL")
 if [ -n "$LATEST_CERT" ]; then
     sed -i '' "s/^trusted-cert = .*/trusted-cert = $LATEST_CERT/" ~/.config/openfortivpn/config
 fi
-sudo openfortivpn -c ~/.config/openfortivpn/config
+rm -f "$STOP_FLAG"
+trap 'rm -f "$STOP_FLAG"; exit 0' INT TERM
+while true; do
+    sudo openfortivpn -c ~/.config/openfortivpn/config
+    if [ -f "$STOP_FLAG" ]; then
+        rm -f "$STOP_FLAG"
+        exit 0
+    fi
+    osascript -e 'display notification "5 秒後自動重連..." with title "VPN 已斷線" sound name "Basso"'
+    sleep 5
+done
 SCRIPT
 chmod +x ~/vpn-connect.sh
+
+# 斷線腳本（設旗標避免自動重連）
+cat > ~/vpn-stop.sh << 'SCRIPT'
+#!/bin/zsh
+touch "/tmp/vpn-stop-$(whoami)"
+sudo pkill -x openfortivpn
+SCRIPT
+chmod +x ~/vpn-stop.sh
+
+# 改密碼腳本
+cat > ~/vpn-passwd.sh << 'SCRIPT'
+#!/bin/zsh
+echo -n "請輸入新的 VPN 密碼: "
+read -s newpass
+echo ""
+sed -i '' "s/^password = .*/password = $newpass/" ~/.config/openfortivpn/config
+echo "密碼已更新，輸入 vpn 測試連線"
+SCRIPT
+chmod +x ~/vpn-passwd.sh
 
 # 設定 alias
 if grep -q "alias vpn=" ~/.zshrc; then
@@ -72,13 +103,14 @@ if grep -q "alias vpn=" ~/.zshrc; then
 else
     echo 'alias vpn="zsh ~/vpn-connect.sh"' >> ~/.zshrc
 fi
+grep -q "alias vpn-passwd=" ~/.zshrc || echo 'alias vpn-passwd="zsh ~/vpn-passwd.sh"' >> ~/.zshrc
 
 # 設定免密碼 sudo
 CURRENT_USER=$(whoami)
 echo "$CURRENT_USER ALL=(ALL) NOPASSWD: /opt/homebrew/bin/openfortivpn" | sudo tee /etc/sudoers.d/openfortivpn > /dev/null
 sudo sh -c "echo '$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/pkill' >> /etc/sudoers.d/openfortivpn"
 
-# 建立 SwiftBar plugin
+# SwiftBar plugin
 echo "[4/4] 設定 SwiftBar 狀態列..."
 mkdir -p ~/Library/Application\ Support/SwiftBar/Plugins
 cat > ~/Library/Application\ Support/SwiftBar/Plugins/vpn.10s.sh << 'PLUGIN'
@@ -87,7 +119,7 @@ if pgrep -x "openfortivpn" > /dev/null; then
     echo "VPN ● | color=#00aa00"
     echo "---"
     echo "狀態：已連線 ✓"
-    echo "斷線 | bash=/usr/bin/sudo param1=pkill param2=-x param3=openfortivpn terminal=false refresh=true"
+    echo "斷線 | bash=/bin/zsh param1=$HOME/vpn-stop.sh terminal=false refresh=true"
 else
     echo "VPN ○ | color=#cc0000"
     echo "---"
@@ -102,6 +134,7 @@ open /Applications/SwiftBar.app
 
 echo ""
 echo "=== 設定完成！==="
-echo "  - Terminal 輸入 'vpn' 可連線（需重開 Terminal）"
-echo "  - 狀態列可直接點選連線/斷線"
-echo "  - 憑證會自動從網路同步，以後不需手動更新"
+echo "  - vpn         連線（斷線自動重連 + 通知）"
+echo "  - vpn-passwd  更改 VPN 密碼"
+echo "  - 狀態列可點選連線/斷線"
+echo "  - 憑證自動從網路同步，不需手動更新"
