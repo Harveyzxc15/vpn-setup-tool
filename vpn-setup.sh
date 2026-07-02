@@ -72,11 +72,14 @@ exit 1
 SCRIPT
 chmod +x ~/vpn-connect.sh
 
-# 斷線腳本（設旗標避免自動重連）
+# 斷線腳本（連迴圈一起停，避免自動重連）
 cat > ~/vpn-stop.sh << 'SCRIPT'
 #!/bin/zsh
 touch "/tmp/vpn-stop-$(whoami)"
-sudo pkill -x openfortivpn
+pgrep -f "vpn-core.sh" | xargs kill -9 2>/dev/null
+sudo pkill -9 -f "openfortivpn -c" 2>/dev/null
+rm -f "/tmp/vpn-stop-$(whoami)"
+exit 0
 SCRIPT
 chmod +x ~/vpn-stop.sh
 
