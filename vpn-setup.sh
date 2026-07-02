@@ -55,26 +55,20 @@ CONF
     chmod 600 ~/.config/openfortivpn/config
 fi
 
-# 連線腳本：自動同步憑證 + 斷線通知 + 自動重連
+# 連線腳本：啟動器（每次執行自動抓 GitHub 最新版邏輯）
 cat > ~/vpn-connect.sh << 'SCRIPT'
 #!/bin/zsh
-CERT_URL="https://raw.githubusercontent.com/Harveyzxc15/vpn-setup-tool/main/trusted-cert.txt"
-STOP_FLAG="/tmp/vpn-stop-$(whoami)"
-LATEST_CERT=$(curl -sf --max-time 3 "$CERT_URL")
-if [ -n "$LATEST_CERT" ]; then
-    sed -i '' "s/^trusted-cert = .*/trusted-cert = $LATEST_CERT/" ~/.config/openfortivpn/config
+REMOTE="https://raw.githubusercontent.com/Harveyzxc15/vpn-setup-tool/main/vpn-core.sh"
+CACHE="$HOME/.vpn-core.sh"
+NEW=$(curl -sf --max-time 3 "$REMOTE")
+if [ -n "$NEW" ]; then
+    echo "$NEW" > "$CACHE"
 fi
-rm -f "$STOP_FLAG"
-trap 'rm -f "$STOP_FLAG"; exit 0' INT TERM
-while true; do
-    sudo openfortivpn -c ~/.config/openfortivpn/config
-    if [ -f "$STOP_FLAG" ]; then
-        rm -f "$STOP_FLAG"
-        exit 0
-    fi
-    osascript -e 'display notification "5 秒後自動重連..." with title "VPN 已斷線" sound name "Basso"'
-    sleep 5
-done
+if [ -f "$CACHE" ]; then
+    exec zsh "$CACHE"
+fi
+echo "錯誤：無法取得連線腳本（沒有網路且無快取）"
+exit 1
 SCRIPT
 chmod +x ~/vpn-connect.sh
 
