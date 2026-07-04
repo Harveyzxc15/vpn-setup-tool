@@ -7,8 +7,9 @@ STOP_FLAG="/tmp/vpn-stop-$(whoami)"
 for pid in $(pgrep -f "vpn-core.sh"); do
     [ "$pid" != "$$" ] && kill -9 "$pid" 2>/dev/null
 done
+sudo /usr/bin/pkill -f "openfortivpn -c" 2>/dev/null
+sleep 2
 sudo /usr/bin/pkill -9 -f "openfortivpn -c" 2>/dev/null
-sleep 1
 
 LATEST_CERT=$(curl -sf --max-time 3 "$CERT_URL")
 if [ -n "$LATEST_CERT" ]; then

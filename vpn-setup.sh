@@ -77,6 +77,8 @@ cat > ~/vpn-stop.sh << 'SCRIPT'
 #!/bin/zsh
 touch "/tmp/vpn-stop-$(whoami)"
 pgrep -f "vpn-core.sh" | xargs kill -9 2>/dev/null
+sudo /usr/bin/pkill -f "openfortivpn -c" 2>/dev/null
+sleep 2
 sudo /usr/bin/pkill -9 -f "openfortivpn -c" 2>/dev/null
 rm -f "/tmp/vpn-stop-$(whoami)"
 exit 0
