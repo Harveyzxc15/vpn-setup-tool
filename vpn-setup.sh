@@ -122,6 +122,21 @@ echo "密碼已更新，輸入 vpn 測試連線"
 SCRIPT
 chmod +x ~/vpn-passwd.sh
 
+# 改帳號腳本（換帳號通常密碼也要換，一起問）
+cat > ~/vpn-account.sh << 'SCRIPT'
+#!/bin/zsh
+echo -n "請輸入新的 VPN 帳號（例：SA1234）: "
+read newuser < /dev/tty
+echo -n "請輸入新的 VPN 密碼（輸入時不會顯示字）: "
+read -s newpass < /dev/tty
+echo ""
+sed -i '' "s/^username = .*/username = $newuser/" ~/.config/openfortivpn/config
+escaped=$(printf '%s' "$newpass" | sed 's/[&/\\]/\\&/g')
+sed -i '' "s/^password = .*/password = $escaped/" ~/.config/openfortivpn/config
+echo "帳號密碼已更新，輸入 vpn 測試連線"
+SCRIPT
+chmod +x ~/vpn-account.sh
+
 # 設定 alias
 if grep -q "alias vpn=" ~/.zshrc; then
     sed -i '' 's|alias vpn=.*|alias vpn="zsh ~/vpn-connect.sh"|' ~/.zshrc
@@ -129,6 +144,7 @@ else
     echo 'alias vpn="zsh ~/vpn-connect.sh"' >> ~/.zshrc
 fi
 grep -q "alias vpn-passwd=" ~/.zshrc || echo 'alias vpn-passwd="zsh ~/vpn-passwd.sh"' >> ~/.zshrc
+grep -q "alias vpn-account=" ~/.zshrc || echo 'alias vpn-account="zsh ~/vpn-account.sh"' >> ~/.zshrc
 
 # 設定免密碼 sudo
 echo "[步驟 5/6] 設定系統權限（之後連 VPN 就不用再打密碼）"
@@ -169,5 +185,6 @@ echo "║        ✅ 全部 6 個步驟完成！              ║"
 echo "╚══════════════════════════════════════════╝"
 echo "  - vpn         連線（斷線自動重連 + 通知）"
 echo "  - vpn-passwd  更改 VPN 密碼"
+echo "  - vpn-account 更改 VPN 帳號＋密碼"
 echo "  - 狀態列可點選連線/斷線"
 echo "  - 憑證自動從網路同步，不需手動更新"
