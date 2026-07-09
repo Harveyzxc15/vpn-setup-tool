@@ -1,6 +1,15 @@
 #!/bin/zsh
 
-echo "=== 公司 VPN 設定工具 ==="
+echo ""
+echo "╔══════════════════════════════════════════╗"
+echo "║        公司 VPN 一鍵設定工具              ║"
+echo "╚══════════════════════════════════════════╝"
+echo ""
+echo "共 6 個步驟，過程中會需要輸入兩種密碼："
+echo "  🔑 VPN 帳號密碼（公司給的，SA 開頭）"
+echo "  💻 Mac 開機密碼（你自己電腦的登入密碼）"
+echo "什麼時候輸入哪一種，畫面都會提示，不用緊張。"
+echo ""
 
 # Apple Silicon 與 Intel 的 Homebrew 路徑不同
 if [ "$(uname -m)" = "arm64" ]; then
@@ -11,41 +20,50 @@ fi
 
 # 安裝 Homebrew
 if ! command -v brew &> /dev/null; then
-    echo "[1/4] 安裝 Homebrew..."
+    echo "[步驟 1/6] 安裝 Homebrew（需要幾分鐘，請耐心等）"
+    echo "┌─────────────────────────────────────────┐"
+    echo "│ 💻 等一下如果出現 Password: 或按 RETURN   │"
+    echo "│    請輸入你的「Mac 開機密碼」再按 Enter    │"
+    echo "│    （輸入時畫面不會顯示字，是正常的）      │"
+    echo "└─────────────────────────────────────────┘"
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
     echo "eval \"\$($BREW_PREFIX/bin/brew shellenv)\"" >> ~/.zshrc
     eval "$($BREW_PREFIX/bin/brew shellenv)"
 else
-    echo "[1/4] Homebrew 已安裝，略過"
+    echo "[步驟 1/6] Homebrew 已安裝 ✓"
 fi
 
 # 安裝 openfortivpn
 if ! command -v openfortivpn &> /dev/null; then
-    echo "[2/4] 安裝 openfortivpn..."
+    echo "[步驟 2/6] 安裝 VPN 連線程式（openfortivpn）..."
     brew install openfortivpn
 else
-    echo "[2/4] openfortivpn 已安裝，略過"
+    echo "[步驟 2/6] VPN 連線程式已安裝 ✓"
 fi
 
 # 安裝 SwiftBar
 if [ ! -d "/Applications/SwiftBar.app" ]; then
-    echo "[3/4] 安裝 SwiftBar..."
+    echo "[步驟 3/6] 安裝狀態列工具（SwiftBar）..."
     brew install --cask swiftbar
 else
-    echo "[3/4] SwiftBar 已安裝，略過"
+    echo "[步驟 3/6] 狀態列工具已安裝 ✓"
 fi
 
 # 輸入帳號密碼（已有設定檔則可跳過）
 if [ -f ~/.config/openfortivpn/config ]; then
-    echo ""
-    echo "偵測到既有設定檔，保留帳號密碼（如需更改密碼，安裝後用 vpn-passwd）"
+    echo "[步驟 4/6] 偵測到既有設定，保留原帳號密碼 ✓（要改密碼可事後用 vpn-passwd）"
 else
-    echo ""
-    echo -n "請輸入 VPN 帳號: "
+    echo "[步驟 4/6] 設定 VPN 帳號密碼"
+    echo "┌─────────────────────────────────────────┐"
+    echo "│ 🔑 現在輸入的是「VPN 帳號密碼」            │"
+    echo "│    就是公司給你的那組（帳號 SA 開頭）      │"
+    echo "└─────────────────────────────────────────┘"
+    echo -n "請輸入 VPN 帳號（例：SA1234）: "
     read username < /dev/tty
-    echo -n "請輸入 VPN 密碼: "
+    echo -n "請輸入 VPN 密碼（輸入時不會顯示字）: "
     read -s password < /dev/tty
     echo ""
+    echo "帳號密碼已記下 ✓"
 
     CERT_URL="https://raw.githubusercontent.com/Harveyzxc15/vpn-setup-tool/main/trusted-cert.txt"
     LATEST_CERT=$(curl -sf "$CERT_URL")
@@ -113,12 +131,18 @@ fi
 grep -q "alias vpn-passwd=" ~/.zshrc || echo 'alias vpn-passwd="zsh ~/vpn-passwd.sh"' >> ~/.zshrc
 
 # 設定免密碼 sudo
+echo "[步驟 5/6] 設定系統權限（之後連 VPN 就不用再打密碼）"
+echo "┌─────────────────────────────────────────┐"
+echo "│ 💻 等一下出現 Password: 時                │"
+echo "│    請輸入你的「Mac 開機密碼」再按 Enter    │"
+echo "│    （不是 VPN 密碼！輸入時不會顯示字）     │"
+echo "└─────────────────────────────────────────┘"
 CURRENT_USER=$(whoami)
 echo "$CURRENT_USER ALL=(ALL) NOPASSWD: $BREW_PREFIX/bin/openfortivpn" | sudo tee /etc/sudoers.d/openfortivpn > /dev/null
 sudo sh -c "echo '$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/pkill' >> /etc/sudoers.d/openfortivpn"
 
 # SwiftBar plugin
-echo "[4/4] 設定 SwiftBar 狀態列..."
+echo "[步驟 6/6] 設定狀態列圖示..."
 mkdir -p ~/Library/Application\ Support/SwiftBar/Plugins
 cat > ~/Library/Application\ Support/SwiftBar/Plugins/vpn.10s.sh << 'PLUGIN'
 #!/bin/zsh
@@ -140,7 +164,9 @@ defaults write com.ameba.SwiftBar PluginDirectory "$HOME/Library/Application Sup
 open /Applications/SwiftBar.app
 
 echo ""
-echo "=== 設定完成！==="
+echo "╔══════════════════════════════════════════╗"
+echo "║        ✅ 全部 6 個步驟完成！              ║"
+echo "╚══════════════════════════════════════════╝"
 echo "  - vpn         連線（斷線自動重連 + 通知）"
 echo "  - vpn-passwd  更改 VPN 密碼"
 echo "  - 狀態列可點選連線/斷線"
