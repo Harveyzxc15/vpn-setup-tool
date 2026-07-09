@@ -2,12 +2,19 @@
 
 echo "=== 公司 VPN 設定工具 ==="
 
+# Apple Silicon 與 Intel 的 Homebrew 路徑不同
+if [ "$(uname -m)" = "arm64" ]; then
+    BREW_PREFIX="/opt/homebrew"
+else
+    BREW_PREFIX="/usr/local"
+fi
+
 # 安裝 Homebrew
 if ! command -v brew &> /dev/null; then
     echo "[1/4] 安裝 Homebrew..."
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zshrc
-    eval "$(/opt/homebrew/bin/brew shellenv)"
+    echo "eval \"\$($BREW_PREFIX/bin/brew shellenv)\"" >> ~/.zshrc
+    eval "$($BREW_PREFIX/bin/brew shellenv)"
 else
     echo "[1/4] Homebrew 已安裝，略過"
 fi
@@ -35,9 +42,9 @@ if [ -f ~/.config/openfortivpn/config ]; then
 else
     echo ""
     echo -n "請輸入 VPN 帳號: "
-    read username
+    read username < /dev/tty
     echo -n "請輸入 VPN 密碼: "
-    read -s password
+    read -s password < /dev/tty
     echo ""
 
     CERT_URL="https://raw.githubusercontent.com/Harveyzxc15/vpn-setup-tool/main/trusted-cert.txt"
@@ -89,9 +96,10 @@ chmod +x ~/vpn-stop.sh
 cat > ~/vpn-passwd.sh << 'SCRIPT'
 #!/bin/zsh
 echo -n "請輸入新的 VPN 密碼: "
-read -s newpass
+read -s newpass < /dev/tty
 echo ""
-sed -i '' "s/^password = .*/password = $newpass/" ~/.config/openfortivpn/config
+escaped=$(printf '%s' "$newpass" | sed 's/[&/\\]/\\&/g')
+sed -i '' "s/^password = .*/password = $escaped/" ~/.config/openfortivpn/config
 echo "密碼已更新，輸入 vpn 測試連線"
 SCRIPT
 chmod +x ~/vpn-passwd.sh
@@ -106,7 +114,7 @@ grep -q "alias vpn-passwd=" ~/.zshrc || echo 'alias vpn-passwd="zsh ~/vpn-passwd
 
 # 設定免密碼 sudo
 CURRENT_USER=$(whoami)
-echo "$CURRENT_USER ALL=(ALL) NOPASSWD: /opt/homebrew/bin/openfortivpn" | sudo tee /etc/sudoers.d/openfortivpn > /dev/null
+echo "$CURRENT_USER ALL=(ALL) NOPASSWD: $BREW_PREFIX/bin/openfortivpn" | sudo tee /etc/sudoers.d/openfortivpn > /dev/null
 sudo sh -c "echo '$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/pkill' >> /etc/sudoers.d/openfortivpn"
 
 # SwiftBar plugin

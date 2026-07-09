@@ -2,6 +2,8 @@
 # VPN 連線核心邏輯 — 此檔案由 GitHub 自動下發，所有人共用
 CERT_URL="https://raw.githubusercontent.com/Harveyzxc15/vpn-setup-tool/main/trusted-cert.txt"
 STOP_FLAG="/tmp/vpn-stop-$(whoami)"
+OFV="/opt/homebrew/bin/openfortivpn"
+[ -x "$OFV" ] || OFV="/usr/local/bin/openfortivpn"
 
 # 單一實例保護：清掉舊的連線迴圈與殘留連線
 for pid in $(pgrep -f "vpn-core.sh"); do
@@ -20,7 +22,7 @@ rm -f "$STOP_FLAG"
 trap 'rm -f "$STOP_FLAG"; exit 0' INT TERM
 
 while true; do
-    sudo /opt/homebrew/bin/openfortivpn -c ~/.config/openfortivpn/config
+    sudo "$OFV" -c ~/.config/openfortivpn/config
     if [ -f "$STOP_FLAG" ]; then
         rm -f "$STOP_FLAG"
         exit 0
