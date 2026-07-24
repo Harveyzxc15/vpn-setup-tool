@@ -1,5 +1,19 @@
 #!/bin/zsh
 
+# 進度條：draw_bar 目前步驟 總步驟 說明
+draw_bar() {
+    local cur=$1 total=$2 label=$3
+    local width=24
+    local filled=$(( cur * width / total ))
+    local bar="" i
+    for (( i=0; i<width; i++ )); do
+        if (( i < filled )); then bar+="█"; else bar+="░"; fi
+    done
+    local pct=$(( cur * 100 / total ))
+    echo ""
+    echo "  【${bar}】 ${pct}%  步驟 ${cur}/${total}｜${label}"
+}
+
 echo ""
 echo "╔══════════════════════════════════════════╗"
 echo "║        公司 VPN 一鍵設定工具              ║"
@@ -11,6 +25,34 @@ echo "  💻 Mac 開機密碼（你自己電腦的登入密碼）"
 echo "什麼時候輸入哪一種，畫面都會提示，不用緊張。"
 echo ""
 
+# ── 前置檢查：命令列開發者工具（Homebrew 必需，新機常缺）──
+if ! xcode-select -p &> /dev/null; then
+    draw_bar 0 6 "安裝命令列開發者工具（Homebrew 需要）"
+    echo "  這台 Mac 還沒有「命令列開發者工具」。"
+    echo "  → 螢幕會跳出安裝視窗，請按「安裝」，然後回到這裡等它裝完。"
+    xcode-select --install 2>/dev/null
+    echo ""
+    echo -n "  等待安裝完成中（裝好會自動繼續，請勿關閉視窗）"
+    for i in {1..240}; do
+        xcode-select -p &> /dev/null && break
+        sleep 5
+        printf "."
+    done
+    echo ""
+    if ! xcode-select -p &> /dev/null; then
+        echo ""
+        echo "  ❌ 開發者工具仍未裝好。可能原因與解法："
+        echo "     • 跳出「無法從軟體更新伺服器取得」→ 換手機熱點，或稍後重跑本指令"
+        echo "     • 電腦版本較舊、App Store 抓不到 → 到 Apple 官網手動下載："
+        echo "         https://developer.apple.com/download/all/"
+        echo "         （登入 Apple ID → 搜尋 Command Line Tools → 下載對應版本安裝）"
+        echo ""
+        echo "  裝好後，重新執行本安裝指令即可。"
+        exit 1
+    fi
+    echo "  ✓ 開發者工具已安裝"
+fi
+
 # Apple Silicon 與 Intel 的 Homebrew 路徑不同
 if [ "$(uname -m)" = "arm64" ]; then
     BREW_PREFIX="/opt/homebrew"
@@ -20,40 +62,41 @@ fi
 
 # 安裝 Homebrew
 if ! command -v brew &> /dev/null; then
-    echo "[步驟 1/6] 安裝 Homebrew（需要幾分鐘，請耐心等）"
+    draw_bar 1 6 "安裝 Homebrew（需要幾分鐘，請耐心等）"
     echo "┌─────────────────────────────────────────┐"
     echo "│ 💻 等一下如果出現 Password: 或按 RETURN   │"
     echo "│    請輸入你的「Mac 開機密碼」再按 Enter    │"
     echo "│    （輸入時畫面不會顯示字，是正常的）      │"
     echo "└─────────────────────────────────────────┘"
+    echo "  ⏳ 這步會停在畫面上一段時間、沒有跑動的進度條，是正常的，請勿關閉視窗。"
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
     echo "eval \"\$($BREW_PREFIX/bin/brew shellenv)\"" >> ~/.zshrc
     eval "$($BREW_PREFIX/bin/brew shellenv)"
 else
-    echo "[步驟 1/6] Homebrew 已安裝 ✓"
+    draw_bar 1 6 "Homebrew 已安裝 ✓"
 fi
 
 # 安裝 openfortivpn
 if ! command -v openfortivpn &> /dev/null; then
-    echo "[步驟 2/6] 安裝 VPN 連線程式（openfortivpn）..."
+    draw_bar 2 6 "安裝 VPN 連線程式（openfortivpn）..."
     brew install openfortivpn
 else
-    echo "[步驟 2/6] VPN 連線程式已安裝 ✓"
+    draw_bar 2 6 "VPN 連線程式已安裝 ✓"
 fi
 
 # 安裝 SwiftBar
 if [ ! -d "/Applications/SwiftBar.app" ]; then
-    echo "[步驟 3/6] 安裝狀態列工具（SwiftBar）..."
+    draw_bar 3 6 "安裝狀態列工具（SwiftBar）..."
     brew install --cask swiftbar
 else
-    echo "[步驟 3/6] 狀態列工具已安裝 ✓"
+    draw_bar 3 6 "狀態列工具已安裝 ✓"
 fi
 
 # 輸入帳號密碼（已有設定檔則可跳過）
 if [ -f ~/.config/openfortivpn/config ]; then
-    echo "[步驟 4/6] 偵測到既有設定，保留原帳號密碼 ✓（要改密碼可事後用 vpn-passwd）"
+    draw_bar 4 6 "偵測到既有設定，保留原帳號密碼 ✓（要改密碼可事後用 vpn-passwd）"
 else
-    echo "[步驟 4/6] 設定 VPN 帳號密碼"
+    draw_bar 4 6 "設定 VPN 帳號密碼"
     echo "┌─────────────────────────────────────────┐"
     echo "│ 🔑 現在輸入的是「VPN 帳號密碼」            │"
     echo "│    就是公司給你的那組（帳號 SA 開頭）      │"
@@ -147,7 +190,7 @@ grep -q "alias vpn-passwd=" ~/.zshrc || echo 'alias vpn-passwd="zsh ~/vpn-passwd
 grep -q "alias vpn-account=" ~/.zshrc || echo 'alias vpn-account="zsh ~/vpn-account.sh"' >> ~/.zshrc
 
 # 設定免密碼 sudo
-echo "[步驟 5/6] 設定系統權限（之後連 VPN 就不用再打密碼）"
+draw_bar 5 6 "設定系統權限（之後連 VPN 就不用再打密碼）"
 echo "┌─────────────────────────────────────────┐"
 echo "│ 💻 等一下出現 Password: 時                │"
 echo "│    請輸入你的「Mac 開機密碼」再按 Enter    │"
@@ -158,7 +201,7 @@ echo "$CURRENT_USER ALL=(ALL) NOPASSWD: $BREW_PREFIX/bin/openfortivpn" | sudo te
 sudo sh -c "echo '$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/pkill' >> /etc/sudoers.d/openfortivpn"
 
 # SwiftBar plugin
-echo "[步驟 6/6] 設定狀態列圖示..."
+draw_bar 6 6 "設定狀態列圖示..."
 mkdir -p ~/Library/Application\ Support/SwiftBar/Plugins
 cat > ~/Library/Application\ Support/SwiftBar/Plugins/vpn.10s.sh << 'PLUGIN'
 #!/bin/zsh
