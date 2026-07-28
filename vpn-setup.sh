@@ -206,12 +206,12 @@ mkdir -p ~/Library/Application\ Support/SwiftBar/Plugins
 cat > ~/Library/Application\ Support/SwiftBar/Plugins/vpn.10s.sh << 'PLUGIN'
 #!/bin/zsh
 if pgrep -x "openfortivpn" > /dev/null; then
-    echo "VPN ● | color=#00aa00"
+    echo "VPN | color=#00aa00"
     echo "---"
     echo "狀態：已連線 ✓"
     echo "斷線 | bash=/bin/zsh param1=$HOME/vpn-stop.sh terminal=false refresh=true"
 else
-    echo "VPN ○ | color=#cc0000"
+    echo "VPN | color=#cc0000"
     echo "---"
     echo "狀態：未連線"
     echo "連線 | bash=/bin/zsh param1=$HOME/vpn-connect.sh terminal=false refresh=true"
