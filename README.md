@@ -48,10 +48,11 @@ zsh ~/Downloads/vpn-setup.sh
 
 安裝完成後，Mac 右上角狀態列會出現 VPN 圖示：
 
-- **VPN ●**（綠色）：已連線
-- **VPN ○**（紅色）：未連線
+- **VPN**（綠字）：已連線，選單會顯示取得的 IP
+- **VPN**（黃字）：連線中／斷線重連中
+- **VPN**（紅字）：未連線；若是密碼錯誤或權限問題，選單會寫原因和處理方式
 
-點擊圖示可選擇「連線」或「斷線」，每 10 秒自動更新狀態。
+點擊圖示可選擇「連線」或「斷線」、開關「開機自動連線」、查看連線紀錄，每 10 秒自動更新狀態。
 
 ### 方式二：Terminal 指令
 
@@ -67,12 +68,17 @@ vpn
 
 ```bash
 vpn-passwd   # 更改 VPN 密碼
+vpn-account  # 更改 VPN 帳號＋密碼
 ```
 
 ### 自動化功能
 
-- **斷線自動重連**：VPN 意外斷線時發送通知，5 秒後自動重連
-- **憑證自動同步**：每次連線前自動從 GitHub 取得最新伺服器憑證，IT 更換憑證不需手動處理
+- **斷線自動重連**：VPN 意外斷線時發送通知並自動重連；連續斷線時間隔拉長（5 → 10 → 30 → 60 秒）
+- **密碼錯誤就停止**：帳號或密碼錯誤時不會一直重試（避免帳號被鎖），會跳通知請你執行 `vpn-passwd`
+- **通道卡死偵測**：連上後每 30 秒 ping 公司內網，連續 90 秒不通（例如睡眠喚醒後）就自動重連
+- **開機自動連線**（選用）：從狀態列選單開啟，下次登入 Mac 就會自動連
+- **連線紀錄**：`~/Library/Logs/vpn.log`，只保留最近 1000 行
+- **憑證與小工具自動同步**：每次連線前自動從 GitHub 取得最新伺服器憑證與本機小工具（下載內容通過檢查才會套用），IT 更換憑證或工具更新都不需手動處理
 
 ---
 
@@ -88,8 +94,8 @@ vpn-passwd   # 更改 VPN 密碼
 
 ## 安全性說明
 
-- VPN 密碼儲存於 `~/.config/openfortivpn/config`，權限設為 `600`，僅本人可讀取
-- sudo 免密碼設定僅限 `openfortivpn` 與 `pkill` 指令，範圍最小化
+- VPN 密碼存在 macOS 鑰匙圈（服務名稱 `vpn-setup-tool`），設定檔 `~/.config/openfortivpn/config` 不存明文密碼；舊版安裝的明文密碼會在下次連線時自動搬進鑰匙圈
+- sudo 免密碼只允許固定的三個指令：`openfortivpn -c <自己的設定檔>`、`pkill -f "openfortivpn -c"`、`pkill -9 -f "openfortivpn -c"`（舊版安裝的規則較寬，重跑一次安裝指令即可收緊）
 
 ---
 
@@ -105,11 +111,16 @@ killall SwiftBar; open /Applications/SwiftBar.app
 改用 Terminal 輸入 `vpn` 確認是否可以連線。
 
 **Q：VPN 密碼更改後怎麼更新？**
-執行以下指令重新編輯設定檔：
-```bash
-nano ~/.config/openfortivpn/config
-```
-修改 `password =` 那行後按 `Ctrl + O` 儲存，`Ctrl + X` 離開。
+打開 Terminal 執行 `vpn-passwd`，輸入新密碼即可。
+
+**Q：狀態列顯示「密碼錯誤，已停止重試」？**
+密碼錯或帳號沒開 VPN 權限。先執行 `vpn-passwd` 重設密碼再連；仍不行請找 IT。
+
+**Q：狀態列顯示「權限設定有問題」？**
+重跑一次安裝指令（會保留帳號密碼）。
+
+**Q：連上了但查不到 EPB？**
+家裡 Wi-Fi 若是 `192.168.1.x` 網段，會和公司內網撞號。改連手機熱點再連 VPN。
 
 ---
 
@@ -121,3 +132,11 @@ nano ~/.config/openfortivpn/config
 | Port | 10443 |
 | 類型 | SSL-VPN (FortiGate) |
 
+
+---
+
+## 維護者備註
+
+- 連線邏輯在 `vpn-core.sh`，本機小工具在 `scripts/`，推上 GitHub 後所有人下次連線自動套用
+- ⚠️ 新版安裝的 sudoers 只認 `vpn-core.sh`／`vpn-stop.sh` 現在的 sudo 寫法；改到 sudo 那幾行的參數，要同步改 `vpn-setup.sh` 的 sudoers 並請大家重跑安裝，否則會連不上
+- IT 換憑證：只改 `trusted-cert.txt`（64 碼十六進位）後 push

@@ -14,6 +14,21 @@ draw_bar() {
     echo "  【${bar}】 ${pct}%  步驟 ${cur}/${total}｜${label}"
 }
 
+REPO_RAW="https://raw.githubusercontent.com/Harveyzxc15/vpn-setup-tool/main"
+
+# 從 GitHub 下載 scripts/ 裡的小工具；內容通過語法檢查才寫入，失敗就停止安裝
+fetch_script() {  # $1=檔名 $2=本機路徑
+    local tmp; tmp=$(mktemp)
+    if curl -sf --max-time 15 "$REPO_RAW/scripts/$1" -o "$tmp" \
+        && [ "$(head -1 "$tmp")" = "#!/bin/zsh" ] && zsh -n "$tmp" 2>/dev/null; then
+        mv "$tmp" "$2" && chmod 755 "$2"
+    else
+        rm -f "$tmp"
+        echo "  ❌ 下載 $1 失敗，請確認網路後重跑安裝指令"
+        exit 1
+    fi
+}
+
 echo ""
 echo "╔══════════════════════════════════════════╗"
 echo "║        公司 VPN 一鍵設定工具              ║"
@@ -108,77 +123,26 @@ else
     echo ""
     echo "帳號密碼已記下 ✓"
 
-    CERT_URL="https://raw.githubusercontent.com/Harveyzxc15/vpn-setup-tool/main/trusted-cert.txt"
-    LATEST_CERT=$(curl -sf "$CERT_URL")
-    [ -z "$LATEST_CERT" ] && LATEST_CERT="8f7862731eaa40a11098763f9f32f7706a411f7c1db241b7782bbac801b3aeb7"
+    LATEST_CERT=$(curl -sf "$REPO_RAW/trusted-cert.txt" | tr -d '[:space:]')
+    [[ "$LATEST_CERT" =~ ^[0-9a-f]{64}$ ]] || LATEST_CERT="8f7862731eaa40a11098763f9f32f7706a411f7c1db241b7782bbac801b3aeb7"
 
     mkdir -p ~/.config/openfortivpn
     cat > ~/.config/openfortivpn/config << CONF
 host = 202.133.226.82
 port = 10443
 username = $username
-password = $password
 trusted-cert = $LATEST_CERT
 CONF
     chmod 600 ~/.config/openfortivpn/config
+    # 密碼存進 macOS 鑰匙圈，設定檔不存明文
+    security add-generic-password -U -s vpn-setup-tool -a "$username" -w "$password"
+    unset password
 fi
 
-# 連線腳本：啟動器（每次執行自動抓 GitHub 最新版邏輯）
-cat > ~/vpn-connect.sh << 'SCRIPT'
-#!/bin/zsh
-REMOTE="https://raw.githubusercontent.com/Harveyzxc15/vpn-setup-tool/main/vpn-core.sh"
-CACHE="$HOME/.vpn-core.sh"
-NEW=$(curl -sf --max-time 3 "$REMOTE")
-if [ -n "$NEW" ]; then
-    echo "$NEW" > "$CACHE"
-fi
-if [ -f "$CACHE" ]; then
-    exec zsh "$CACHE"
-fi
-echo "錯誤：無法取得連線腳本（沒有網路且無快取）"
-exit 1
-SCRIPT
-chmod +x ~/vpn-connect.sh
-
-# 斷線腳本（連迴圈一起停，避免自動重連）
-cat > ~/vpn-stop.sh << 'SCRIPT'
-#!/bin/zsh
-touch "/tmp/vpn-stop-$(whoami)"
-pgrep -f "vpn-core.sh" | xargs kill -9 2>/dev/null
-sudo /usr/bin/pkill -f "openfortivpn -c" 2>/dev/null
-sleep 2
-sudo /usr/bin/pkill -9 -f "openfortivpn -c" 2>/dev/null
-rm -f "/tmp/vpn-stop-$(whoami)"
-exit 0
-SCRIPT
-chmod +x ~/vpn-stop.sh
-
-# 改密碼腳本
-cat > ~/vpn-passwd.sh << 'SCRIPT'
-#!/bin/zsh
-echo -n "請輸入新的 VPN 密碼: "
-read -s newpass < /dev/tty
-echo ""
-escaped=$(printf '%s' "$newpass" | sed 's/[&/\\]/\\&/g')
-sed -i '' "s/^password = .*/password = $escaped/" ~/.config/openfortivpn/config
-echo "密碼已更新，輸入 vpn 測試連線"
-SCRIPT
-chmod +x ~/vpn-passwd.sh
-
-# 改帳號腳本（換帳號通常密碼也要換，一起問）
-cat > ~/vpn-account.sh << 'SCRIPT'
-#!/bin/zsh
-echo -n "請輸入新的 VPN 帳號（例：SA1234）: "
-read newuser < /dev/tty
-echo -n "請輸入新的 VPN 密碼（輸入時不會顯示字）: "
-read -s newpass < /dev/tty
-echo ""
-sed -i '' "s/^username = .*/username = $newuser/" ~/.config/openfortivpn/config
-escaped=$(printf '%s' "$newpass" | sed 's/[&/\\]/\\&/g')
-sed -i '' "s/^password = .*/password = $escaped/" ~/.config/openfortivpn/config
-echo "帳號密碼已更新，輸入 vpn 測試連線"
-SCRIPT
-chmod +x ~/vpn-account.sh
+# 下載本機小工具（連線啟動器、斷線、改密碼、改帳號、自動連線開關），內容都在 GitHub 的 scripts/
+for f in vpn-connect.sh vpn-stop.sh vpn-passwd.sh vpn-account.sh vpn-auto.sh; do
+    fetch_script "$f" "$HOME/$f"
+done
 
 # 設定 alias
 if grep -q "alias vpn=" ~/.zshrc; then
@@ -197,27 +161,23 @@ echo "│    請輸入你的「Mac 開機密碼」再按 Enter    │"
 echo "│    （不是 VPN 密碼！輸入時不會顯示字）     │"
 echo "└─────────────────────────────────────────┘"
 CURRENT_USER=$(whoami)
-echo "$CURRENT_USER ALL=(ALL) NOPASSWD: $BREW_PREFIX/bin/openfortivpn" | sudo tee /etc/sudoers.d/openfortivpn > /dev/null
-sudo sh -c "echo '$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/pkill' >> /etc/sudoers.d/openfortivpn"
+# 只允許 vpn-core.sh / vpn-stop.sh 實際用到的固定指令（改那兩支的 sudo 參數要同步改這裡）
+SUDOERS_TMP=$(mktemp)
+cat > "$SUDOERS_TMP" << SUDOERS
+$CURRENT_USER ALL=(root) NOPASSWD: $BREW_PREFIX/bin/openfortivpn -c $HOME/.config/openfortivpn/config
+$CURRENT_USER ALL=(root) NOPASSWD: /usr/bin/pkill -f openfortivpn -c, /usr/bin/pkill -9 -f openfortivpn -c
+SUDOERS
+if sudo visudo -cf "$SUDOERS_TMP" > /dev/null; then
+    sudo install -m 440 -o root -g wheel "$SUDOERS_TMP" /etc/sudoers.d/openfortivpn
+else
+    echo "  ❌ 權限設定檔檢查失敗，未變更系統權限"
+fi
+rm -f "$SUDOERS_TMP"
 
 # SwiftBar plugin
 draw_bar 6 6 "設定狀態列圖示..."
 mkdir -p ~/Library/Application\ Support/SwiftBar/Plugins
-cat > ~/Library/Application\ Support/SwiftBar/Plugins/vpn.10s.sh << 'PLUGIN'
-#!/bin/zsh
-if pgrep -x "openfortivpn" > /dev/null; then
-    echo "VPN | color=#00aa00"
-    echo "---"
-    echo "狀態：已連線 ✓"
-    echo "斷線 | bash=/bin/zsh param1=$HOME/vpn-stop.sh terminal=false refresh=true"
-else
-    echo "VPN | color=#cc0000"
-    echo "---"
-    echo "狀態：未連線"
-    echo "連線 | bash=/bin/zsh param1=$HOME/vpn-connect.sh terminal=false refresh=true"
-fi
-PLUGIN
-chmod +x ~/Library/Application\ Support/SwiftBar/Plugins/vpn.10s.sh
+fetch_script vpn.10s.sh "$HOME/Library/Application Support/SwiftBar/Plugins/vpn.10s.sh"
 
 defaults write com.ameba.SwiftBar PluginDirectory "$HOME/Library/Application Support/SwiftBar/Plugins"
 open /Applications/SwiftBar.app
@@ -229,5 +189,6 @@ echo "╚═══════════════════════�
 echo "  - vpn         連線（斷線自動重連 + 通知）"
 echo "  - vpn-passwd  更改 VPN 密碼"
 echo "  - vpn-account 更改 VPN 帳號＋密碼"
-echo "  - 狀態列可點選連線/斷線"
-echo "  - 憑證自動從網路同步，不需手動更新"
+echo "  - 狀態列可點選連線/斷線、開關「開機自動連線」、查看連線紀錄"
+echo "  - 憑證與小工具自動從網路同步，不需手動更新"
+echo "  - 密碼存在 Mac 鑰匙圈；密碼錯會停止重試，不會把帳號鎖住"
