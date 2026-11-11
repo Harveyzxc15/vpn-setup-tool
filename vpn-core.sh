@@ -98,6 +98,7 @@ rm -f "$STOP_FLAG"
 trap 'kill $WD_PID 2>/dev/null' EXIT
 trap 'rm -f "$STOP_FLAG" "$STATUS_FILE"; exit 0' INT TERM
 
+# 下面三種「刻意停止」都用 exit 0：用 launchd KeepAlive(SuccessfulExit=false) 跑的機器才不會被自動重啟又去試密碼
 fails=0
 while true; do
     PW=$(get_password)
@@ -105,7 +106,7 @@ while true; do
         set_status need_password
         log "找不到密碼，停止"
         notify "VPN 沒有密碼" "請開終端機輸入 vpn-passwd 設定密碼"
-        exit 1
+        exit 0
     fi
 
     set_status connecting
@@ -125,14 +126,14 @@ while true; do
         set_status auth_failed
         log "帳號或密碼錯誤，停止重試"
         notify "VPN 密碼錯誤，已停止重試" "請開終端機輸入 vpn-passwd 更新密碼"
-        exit 1
+        exit 0
     fi
     if grep -q "a password is required" "$session"; then
         rm -f "$session"
         set_status sudo_failed
         log "sudo 免密碼規則不符，停止"
         notify "VPN 權限設定有問題" "請重新執行安裝指令"
-        exit 1
+        exit 0
     fi
     rm -f "$session"
 
